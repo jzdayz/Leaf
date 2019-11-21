@@ -10,6 +10,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Random;
 
+/**
+ *  1位0  42位时间 10位机器ID 12位序列号
+ */
 public class SnowflakeIDGenImpl implements IDGen {
 
     @Override
@@ -25,6 +28,7 @@ public class SnowflakeIDGenImpl implements IDGen {
     private final long sequenceBits = 12L;
     private final long workerIdShift = sequenceBits;
     private final long timestampLeftShift = sequenceBits + workerIdBits;
+    // 4095 ->  1111 1111 1111
     private final long sequenceMask = ~(-1L << sequenceBits);
     private long workerId;
     private long sequence = 0L;
@@ -32,7 +36,7 @@ public class SnowflakeIDGenImpl implements IDGen {
     private static final Random RANDOM = new Random();
 
     public SnowflakeIDGenImpl(String zkAddress, int port) {
-        //Thu Nov 04 2010 09:42:54 GMT+0800 (中国标准时间) 
+        //Thu Nov 04 2010 09:42:54 GMT+0800 (中国标准时间)
         this(zkAddress, port, 1288834974657L);
     }
 
@@ -60,12 +64,16 @@ public class SnowflakeIDGenImpl implements IDGen {
     @Override
     public synchronized Result get(String key) {
         long timestamp = timeGen();
+        // 时间回溯
         if (timestamp < lastTimestamp) {
             long offset = lastTimestamp - timestamp;
+            // 小幅度回溯，小于5s
             if (offset <= 5) {
                 try {
+                    // 等待offset*2
                     wait(offset << 1);
                     timestamp = timeGen();
+                    // 如果时间还是回溯的
                     if (timestamp < lastTimestamp) {
                         return new Result(-1, Status.EXCEPTION);
                     }
@@ -79,9 +87,11 @@ public class SnowflakeIDGenImpl implements IDGen {
         }
         if (lastTimestamp == timestamp) {
             sequence = (sequence + 1) & sequenceMask;
+            // 这个为0代表生成的序列号已经超过了12位的ID
             if (sequence == 0) {
                 //seq 为0的时候表示是下一毫秒时间开始对seq做随机
                 sequence = RANDOM.nextInt(100);
+                //得到下一毫秒
                 timestamp = tilNextMillis(lastTimestamp);
             }
         } else {
@@ -94,6 +104,9 @@ public class SnowflakeIDGenImpl implements IDGen {
 
     }
 
+    /**
+     *  得到lastTimestamp的下一毫秒
+     */
     protected long tilNextMillis(long lastTimestamp) {
         long timestamp = timeGen();
         while (timestamp <= lastTimestamp) {
